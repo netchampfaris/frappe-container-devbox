@@ -65,7 +65,6 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
 RUN systemctl set-default multi-user.target && \
     : > /etc/machine-id && \
     : > /var/lib/dbus/machine-id && \
-    systemctl enable mariadb redis-server cron && \
     systemctl mask \
       dev-hugepages.mount \
       sys-fs-fuse-connections.mount \
@@ -84,3 +83,6 @@ RUN chmod +x \
       /usr/local/bin/start-frappe
 
 WORKDIR /workspace
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]
