@@ -84,14 +84,9 @@ else
   container machine set-default "$MACHINE_NAME"
 fi
 
-if ! container machine run -n "$MACHINE_NAME" -- true; then
-  echo "Container machine '$MACHINE_NAME' did not boot cleanly." >&2
-  echo "Try recreating it with: FRAPPE_RECREATE_MACHINE=1 ./setup" >&2
-  echo "For diagnostics: container machine logs --boot $MACHINE_NAME" >&2
-  exit 1
-fi
-
-container machine run -n "$MACHINE_NAME" -- create-frappe-bench "$BENCH_NAME" "$SITE_NAME" "$FRAPPE_BRANCH"
+container machine run -n "$MACHINE_NAME" -w /tmp -- \
+  bash -lc 'create-frappe-bench "$1" "$2" "$3"' \
+  _ "$BENCH_NAME" "$SITE_NAME" "$FRAPPE_BRANCH"
 
 cat <<MSG
 

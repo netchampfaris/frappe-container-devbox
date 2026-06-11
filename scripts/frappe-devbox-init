@@ -1,14 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-sudo systemctl start mariadb
-sudo systemctl start redis-server
-sudo systemctl start cron
+sudo install -d -o mysql -g mysql -m 0755 /run/mysqld
 
-sudo mariadb -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root'; FLUSH PRIVILEGES;" || true
-sudo mariadb -uroot -proot -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY 'root';" || true
-sudo mariadb -uroot -proot -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';" || true
-sudo mariadb -uroot -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;" || true
-sudo mariadb -uroot -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;" || true
+db_ready() {
+  sudo mariadb -e "SELECT 1" >/dev/null 2>&1 || \
+    mariadb -uroot -proot -e "SELECT 1" >/dev/null 2>&1
+}
+
+if ! pgrep -x mariadbd >/dev/null 2>&1; then
+  sudo mariadbd \
+    --user=mysql \
+    --datadir=/var/lib/mysql \
+    --socket=/run/mysqld/mysqld.sock \
+    --pid-file=/run/mysqld/mysqld.pid \
+    > /tmp/mariadb.log 2>&1 &
+fi
+
+for _ in {1..60}; do
+  if db_ready; then
+    break
+  fi
+  sleep 1
+done
+
+if ! db_ready; then
+  echo "MariaDB failed to start. Log:" >&2
+  sudo cat /tmp/mariadb.log >&2 || true
+  exit 1
+fi
+
+if ! redis-cli ping >/dev/null 2>&1; then
+  sudo redis-server --daemonize yes
+fi
+
+if ! pgrep -x cron >/dev/null 2>&1; then
+  sudo cron
+fi
+
+sudo mariadb -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root'; FLUSH PRIVILEGES;" || \
+  mariadb -uroot -proot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root'; FLUSH PRIVILEGES;" || true
+mariadb -uroot -proot -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY 'root';" || true
+mariadb -uroot -proot -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';" || true
+mariadb -uroot -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;" || true
+mariadb -uroot -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;" || true
 
 echo "Frappe devbox services are ready."

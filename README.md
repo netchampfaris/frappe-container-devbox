@@ -29,6 +29,8 @@ The first run can take a while because it installs Apple `container`, builds the
 container machine run -n frappe-v16 -- start-frappe frappe-bench
 ```
 
+During setup, `bench init` can spend several minutes at Yarn's `Building fresh packages` step without printing progress. Let it run.
+
 Then open the machine IP on port `8000`. If DNS is not configured, get the IP with:
 
 ```bash
