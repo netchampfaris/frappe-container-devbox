@@ -16,6 +16,7 @@ RUN apt-get update && \
       gnupg \
       sudo \
       systemd \
+      systemd-sysv \
       dbus \
       cron \
       git \
@@ -65,6 +66,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
 RUN systemctl set-default multi-user.target && \
     : > /etc/machine-id && \
     : > /var/lib/dbus/machine-id && \
+    test -x /sbin/init && \
     systemctl mask \
       dev-hugepages.mount \
       sys-fs-fuse-connections.mount \
