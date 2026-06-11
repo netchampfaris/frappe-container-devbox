@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BENCH_NAME="${1:-frappe-bench}"
+BENCH_ROOT="${FRAPPE_BENCH_ROOT:-$HOME/frappe}"
+
+frappe-devbox-init
+
+cd "$BENCH_ROOT/$BENCH_NAME"
+bench start

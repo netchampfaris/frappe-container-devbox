@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BENCH_NAME="${1:-frappe-bench}"
+SITE_NAME="${2:-development.localhost}"
+FRAPPE_BRANCH="${3:-version-16}"
+BENCH_ROOT="${FRAPPE_BENCH_ROOT:-$HOME/frappe}"
+ADMIN_PASSWORD="${FRAPPE_ADMIN_PASSWORD:-admin}"
+DB_ROOT_PASSWORD="${FRAPPE_DB_ROOT_PASSWORD:-root}"
+
+frappe-devbox-init
+
+mkdir -p "$BENCH_ROOT"
+cd "$BENCH_ROOT"
+
+if [[ ! -d "$BENCH_NAME" ]]; then
+  bench init \
+    --frappe-branch "$FRAPPE_BRANCH" \
+    --python python3.14 \
+    "$BENCH_NAME"
+fi
+
+cd "$BENCH_NAME"
+
+bench set-config -g db_host 127.0.0.1
+bench set-config -g redis_cache redis://127.0.0.1:6379
+bench set-config -g redis_queue redis://127.0.0.1:6379
+bench set-config -g redis_socketio redis://127.0.0.1:6379
+
+if [[ ! -d "sites/$SITE_NAME" ]]; then
+  bench new-site \
+    --db-root-password "$DB_ROOT_PASSWORD" \
+    --admin-password "$ADMIN_PASSWORD" \
+    "$SITE_NAME"
+fi
+
+bench --site "$SITE_NAME" set-config developer_mode 1
+bench --site "$SITE_NAME" clear-cache
+bench use "$SITE_NAME"
+
+cat <<MSG
+
+Frappe v16 devbox is ready.
+
+Bench: $BENCH_ROOT/$BENCH_NAME
+Site:  $SITE_NAME
+User:  Administrator
+Pass:  $ADMIN_PASSWORD
+
+Start it with:
+  start-frappe $BENCH_NAME
+
+MSG

@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+MACHINE_NAME="${FRAPPE_MACHINE_NAME:-frappe-v16}"
+IMAGE_NAME="${FRAPPE_IMAGE_NAME:-local/frappe-devbox:v16}"
+BENCH_NAME="${FRAPPE_BENCH_NAME:-frappe-bench}"
+SITE_NAME="${FRAPPE_SITE_NAME:-development.localhost}"
+FRAPPE_BRANCH="${FRAPPE_BRANCH:-version-16}"
+CPUS="${FRAPPE_CPUS:-8}"
+MEMORY="${FRAPPE_MEMORY:-16G}"
+CONTAINER_PKG_URL="${CONTAINER_PKG_URL:-https://github.com/apple/container/releases/download/1.0.0/container-1.0.0-installer-signed.pkg}"
+
+if [[ "$(uname -m)" != "arm64" ]]; then
+  echo "Apple container requires an Apple Silicon Mac." >&2
+  exit 1
+fi
+
+MACOS_VERSION="$(sw_vers -productVersion)"
+MACOS_MAJOR="${MACOS_VERSION%%.*}"
+
+case "$MACOS_MAJOR" in
+  ''|*[!0-9]*)
+    echo "Could not parse macOS version: $MACOS_VERSION" >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$MACOS_MAJOR" -lt 26 && "${FRAPPE_ALLOW_UNSUPPORTED_MACOS:-}" != "1" ]]; then
+  echo "macOS 26 is required for this workshop setup. Current version: $MACOS_VERSION" >&2
+  echo "Set FRAPPE_ALLOW_UNSUPPORTED_MACOS=1 only if you know what you are doing." >&2
+  exit 1
+fi
+
+if ! command -v container >/dev/null 2>&1; then
+  echo "Apple container CLI is missing. Installing it now."
+  echo "This requires the student's macOS administrator password."
+
+  TMPDIR_FOR_CONTAINER_INSTALL="$(mktemp -d)"
+  CONTAINER_PKG="$TMPDIR_FOR_CONTAINER_INSTALL/container-installer.pkg"
+  trap 'rm -rf "$TMPDIR_FOR_CONTAINER_INSTALL"' EXIT
+
+  curl -fL "$CONTAINER_PKG_URL" -o "$CONTAINER_PKG"
+  sudo installer -pkg "$CONTAINER_PKG" -target /
+
+  if ! command -v container >/dev/null 2>&1; then
+    echo "Apple container installed, but 'container' is not on PATH. Try opening a new terminal and rerun ./setup." >&2
+    exit 1
+  fi
+fi
+
+container system start --enable-kernel-install
+
+if [[ "${FRAPPE_SKIP_BUILD:-}" == "1" ]]; then
+  container image pull "$IMAGE_NAME"
+else
+  container build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+fi
+
+if ! container machine list --format json | grep -q "\"$MACHINE_NAME\""; then
+  container machine create \
+    --name "$MACHINE_NAME" \
+    --cpus "$CPUS" \
+    --memory "$MEMORY" \
+    --set-default \
+    "$IMAGE_NAME"
+else
+  container machine set-default "$MACHINE_NAME"
+fi
+
+container machine run -n "$MACHINE_NAME" -- create-frappe-bench "$BENCH_NAME" "$SITE_NAME" "$FRAPPE_BRANCH"
+
+cat <<MSG
+
+Done.
+
+Start Frappe:
+  container machine run -n $MACHINE_NAME -- start-frappe $BENCH_NAME
+
+Defaults:
+  Site: $SITE_NAME
+  User: Administrator
+  Pass: admin
+
+MSG

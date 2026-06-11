@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+sudo systemctl start mariadb
+sudo systemctl start redis-server
+sudo systemctl start cron
+
+sudo mariadb -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'root'; FLUSH PRIVILEGES;" || true
+sudo mariadb -uroot -proot -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY 'root';" || true
+sudo mariadb -uroot -proot -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'root';" || true
+sudo mariadb -uroot -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;" || true
+sudo mariadb -uroot -proot -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;" || true
+
+echo "Frappe devbox services are ready."
