@@ -14,6 +14,10 @@ CPUS="${FRAPPE_CPUS:-8}"
 MEMORY="${FRAPPE_MEMORY:-16G}"
 CONTAINER_PKG_URL="${CONTAINER_PKG_URL:-https://github.com/apple/container/releases/download/1.0.0/container-1.0.0-installer-signed.pkg}"
 
+machine_exists() {
+  container machine list --format json | grep -q "\"$MACHINE_NAME\""
+}
+
 if [[ "$(uname -m)" != "arm64" ]]; then
   echo "Apple container requires an Apple Silicon Mac." >&2
   exit 1
@@ -60,15 +64,31 @@ else
   container build -t "$IMAGE_NAME" "$SCRIPT_DIR"
 fi
 
-if ! container machine list --format json | grep -q "\"$MACHINE_NAME\""; then
-  container machine create \
+if [[ "${FRAPPE_RECREATE_MACHINE:-}" == "1" ]] && machine_exists; then
+  container machine delete "$MACHINE_NAME"
+fi
+
+if ! machine_exists; then
+  if ! container machine create \
     --name "$MACHINE_NAME" \
     --cpus "$CPUS" \
     --memory "$MEMORY" \
     --set-default \
-    "$IMAGE_NAME"
+    "$IMAGE_NAME"; then
+    echo "Failed to create container machine '$MACHINE_NAME'." >&2
+    echo "If a partial machine was created, rerun with: FRAPPE_RECREATE_MACHINE=1 ./setup" >&2
+    echo "For diagnostics: container machine logs --boot $MACHINE_NAME" >&2
+    exit 1
+  fi
 else
   container machine set-default "$MACHINE_NAME"
+fi
+
+if ! container machine run -n "$MACHINE_NAME" -- true; then
+  echo "Container machine '$MACHINE_NAME' did not boot cleanly." >&2
+  echo "Try recreating it with: FRAPPE_RECREATE_MACHINE=1 ./setup" >&2
+  echo "For diagnostics: container machine logs --boot $MACHINE_NAME" >&2
+  exit 1
 fi
 
 container machine run -n "$MACHINE_NAME" -- create-frappe-bench "$BENCH_NAME" "$SITE_NAME" "$FRAPPE_BRANCH"

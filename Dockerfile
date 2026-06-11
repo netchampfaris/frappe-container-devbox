@@ -63,6 +63,8 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     chmod -R a+rX /opt/uv
 
 RUN systemctl set-default multi-user.target && \
+    : > /etc/machine-id && \
+    : > /var/lib/dbus/machine-id && \
     systemctl enable mariadb redis-server cron && \
     systemctl mask \
       dev-hugepages.mount \
