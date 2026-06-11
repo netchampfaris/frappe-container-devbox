@@ -4,12 +4,11 @@ set -euo pipefail
 export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/.frappe-devbox.env"
 
+IMAGE_NAME="${FRAPPE_IMAGE_NAME:-ghcr.io/netchampfaris/frappe-devbox:v16}"
 MACHINE_NAME="${FRAPPE_MACHINE_NAME:-frappe-v16}"
-IMAGE_NAME="${FRAPPE_IMAGE_NAME:-local/frappe-devbox:v16}"
 BENCH_NAME="${FRAPPE_BENCH_NAME:-frappe-bench}"
-SITE_NAME="${FRAPPE_SITE_NAME:-development.localhost}"
-FRAPPE_BRANCH="${FRAPPE_BRANCH:-version-16}"
 CPUS="${FRAPPE_CPUS:-8}"
 MEMORY="${FRAPPE_MEMORY:-16G}"
 CONTAINER_PKG_URL="${CONTAINER_PKG_URL:-https://github.com/apple/container/releases/download/1.0.0/container-1.0.0-installer-signed.pkg}"
@@ -34,14 +33,13 @@ case "$MACOS_MAJOR" in
 esac
 
 if [[ "$MACOS_MAJOR" -lt 26 && "${FRAPPE_ALLOW_UNSUPPORTED_MACOS:-}" != "1" ]]; then
-  echo "macOS 26 is required for this workshop setup. Current version: $MACOS_VERSION" >&2
-  echo "Set FRAPPE_ALLOW_UNSUPPORTED_MACOS=1 only if you know what you are doing." >&2
+  echo "macOS 26 is required for this setup. Current version: $MACOS_VERSION" >&2
   exit 1
 fi
 
 if ! command -v container >/dev/null 2>&1; then
   echo "Apple container CLI is missing. Installing it now."
-  echo "This requires the student's macOS administrator password."
+  echo "This requires your macOS administrator password."
 
   TMPDIR_FOR_CONTAINER_INSTALL="$(mktemp -d)"
   CONTAINER_PKG="$TMPDIR_FOR_CONTAINER_INSTALL/container-installer.pkg"
@@ -49,55 +47,77 @@ if ! command -v container >/dev/null 2>&1; then
 
   curl -fL "$CONTAINER_PKG_URL" -o "$CONTAINER_PKG"
   sudo installer -pkg "$CONTAINER_PKG" -target /
-
-  if ! command -v container >/dev/null 2>&1; then
-    echo "Apple container installed, but 'container' is not on PATH. Try opening a new terminal and rerun ./setup." >&2
-    exit 1
-  fi
 fi
 
 container system start --enable-kernel-install
 
-if [[ "${FRAPPE_SKIP_BUILD:-}" == "1" ]]; then
-  container image pull "$IMAGE_NAME"
-else
+DEFAULT_BENCH_DIR="$HOME/$BENCH_NAME"
+printf "Where should the %s directory live on your Mac? [%s] " "$BENCH_NAME" "$DEFAULT_BENCH_DIR"
+read -r BENCH_DIR
+BENCH_DIR="${BENCH_DIR:-$DEFAULT_BENCH_DIR}"
+
+mkdir -p "$BENCH_DIR"
+BENCH_DIR="$(cd "$BENCH_DIR" && pwd -P)"
+
+case "$BENCH_DIR" in
+  "$HOME"/*|"$HOME") ;;
+  *)
+    echo "The bench directory must live under your home directory because container machine mounts your home directory." >&2
+    echo "Choose a path under: $HOME" >&2
+    exit 1
+    ;;
+esac
+
+if [[ "${FRAPPE_BUILD_LOCAL:-}" == "1" ]]; then
   container build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+else
+  container image pull "$IMAGE_NAME"
 fi
 
 if [[ "${FRAPPE_RECREATE_MACHINE:-}" == "1" ]] && machine_exists; then
-  container machine delete "$MACHINE_NAME"
+  if ! container machine delete "$MACHINE_NAME"; then
+    if machine_exists; then
+      echo "Failed to delete container machine '$MACHINE_NAME'." >&2
+      echo "Try: container system stop && container system start && FRAPPE_RECREATE_MACHINE=1 ./setup" >&2
+      exit 1
+    fi
+  fi
 fi
 
 if ! machine_exists; then
-  if ! container machine create \
+  container machine create \
     --name "$MACHINE_NAME" \
     --cpus "$CPUS" \
     --memory "$MEMORY" \
+    --home-mount rw \
     --set-default \
-    "$IMAGE_NAME"; then
-    echo "Failed to create container machine '$MACHINE_NAME'." >&2
-    echo "If a partial machine was created, rerun with: FRAPPE_RECREATE_MACHINE=1 ./setup" >&2
-    echo "For diagnostics: container machine logs --boot $MACHINE_NAME" >&2
-    exit 1
-  fi
+    --no-boot \
+    "$IMAGE_NAME"
 else
   container machine set-default "$MACHINE_NAME"
 fi
 
-container machine run -n "$MACHINE_NAME" -w /tmp -- \
-  bash -lc 'create-frappe-bench "$1" "$2" "$3"' \
-  _ "$BENCH_NAME" "$SITE_NAME" "$FRAPPE_BRANCH"
+cat > "$CONFIG_FILE" <<EOF
+FRAPPE_IMAGE_NAME="$IMAGE_NAME"
+FRAPPE_MACHINE_NAME="$MACHINE_NAME"
+FRAPPE_BENCH_NAME="$BENCH_NAME"
+FRAPPE_BENCH_DIR="$BENCH_DIR"
+EOF
 
 cat <<MSG
 
-Done.
+Setup complete.
 
-Start Frappe:
-  container machine run -n $MACHINE_NAME -- start-frappe $BENCH_NAME
+Bench directory on your Mac:
+  $BENCH_DIR
 
-Defaults:
-  Site: $SITE_NAME
-  User: Administrator
-  Pass: admin
+Open it in your editor, then enter the devbox:
+  ./frappe-shell
+
+Inside the shell, use bench-cli:
+  bench new $BENCH_NAME
+  bench init
+  bench new-site site1.localhost
+  bench start
 
 MSG

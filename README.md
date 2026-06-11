@@ -1,8 +1,8 @@
 # Frappe v16 Apple Container Devbox
 
-One-command Frappe v16 development setup using Apple `container machine`.
+One-command Frappe v16 devbox setup using Apple `container machine` and [`frappe/bench-cli`](https://github.com/frappe/bench-cli).
 
-This does not use `frappe_docker` or Docker Compose. It builds a persistent Linux devbox image with MariaDB, Redis, Python 3.14, Node 24, Yarn, and Bench, then creates a Frappe v16 bench/site inside the machine.
+This does not use `frappe_docker` or Docker Compose.
 
 ## Requirements
 
@@ -11,7 +11,7 @@ This does not use `frappe_docker` or Docker Compose. It builds a persistent Linu
 - macOS administrator password
 - Strong internet connection
 - At least 16 GB RAM recommended
-- Around 15-25 GB free disk space recommended
+- Around 30-40 GB free disk space recommended
 
 The setup script installs Apple `container` 1.0.0 automatically if it is missing.
 
@@ -21,82 +21,76 @@ The setup script installs Apple `container` 1.0.0 automatically if it is missing
 ./setup
 ```
 
-The first run can take a while because it installs Apple `container`, builds the devbox image, downloads Python/Node/MariaDB packages, clones Frappe, and creates the site.
+Setup asks where the `frappe-bench` directory should live on your Mac. Choose a path under your home directory, for example:
 
-## Start Frappe
-
-```bash
-container machine run -n frappe-v16 -- start-frappe frappe-bench
+```text
+/Users/you/frappe-bench
 ```
 
-During setup, `bench init` can spend several minutes at Yarn's `Building fresh packages` step without printing progress. Let it run.
+You can open that folder directly in your editor. The container machine sees it through its home mount.
 
-Then open the machine IP on port `8000`. If DNS is not configured, get the IP with:
+Setup pulls the published image by default:
 
-```bash
-container machine inspect frappe-v16
+```text
+ghcr.io/netchampfaris/frappe-devbox:v16
 ```
 
-The setup marks the created site as Bench's default site, so opening `http://<machine-ip>:8000` should route to it.
+To build locally instead:
 
-Defaults:
+```bash
+FRAPPE_BUILD_LOCAL=1 ./setup
+```
 
-- Machine: `frappe-v16`
-- Image: `local/frappe-devbox:v16`
-- Bench: `~/frappe/frappe-bench`
-- Site: `development.localhost`
-- Administrator password: `admin`
-- MariaDB root password: `root`
+## Enter The Devbox
+
+```bash
+./frappe-shell
+```
+
+This boots the machine if needed, starts MariaDB/Redis/cron, wires your selected host folder into bench-cli's `benches/frappe-bench`, and drops you into an interactive shell.
+
+## First Bench
+
+Inside `./frappe-shell`:
+
+```bash
+bench new frappe-bench
+bench init
+bench new-site site1.localhost
+bench start
+```
+
+bench-cli references:
+
+- App: `http://site1.localhost:8000`
+- Admin UI: `http://localhost:8002`
+
+If `bench init` or `bench start` appears quiet during package installation, let it run.
 
 ## Configuration
 
 Override defaults with environment variables:
 
 ```bash
-FRAPPE_MACHINE_NAME=my-client \
-FRAPPE_BENCH_NAME=my-bench \
-FRAPPE_SITE_NAME=my-client.localhost \
+FRAPPE_MACHINE_NAME=my-workshop \
+FRAPPE_BENCH_NAME=frappe-bench \
 FRAPPE_CPUS=8 \
 FRAPPE_MEMORY=16G \
 ./setup
 ```
 
-For workshops, prebuild and push the image once, then students can skip the local image build:
+Recreate the machine:
 
 ```bash
-FRAPPE_IMAGE_NAME=ghcr.io/your-org/frappe-devbox:v16 \
-FRAPPE_SKIP_BUILD=1 \
-./setup
+FRAPPE_RECREATE_MACHINE=1 ./setup
 ```
 
 ## Publish Image To GitHub
 
-Push this folder to a GitHub repo and run the `Publish Devbox Image` workflow from the Actions tab.
+The GitHub Actions workflow publishes:
 
-The workflow publishes:
+- `ghcr.io/netchampfaris/frappe-devbox:v16`
+- `ghcr.io/netchampfaris/frappe-devbox:latest`
+- `ghcr.io/netchampfaris/frappe-devbox:<commit-sha>`
 
-- `ghcr.io/<owner>/frappe-devbox:v16`
-- `ghcr.io/<owner>/frappe-devbox:latest`
-- `ghcr.io/<owner>/frappe-devbox:<commit-sha>`
-
-For the workshop, students should run:
-
-```bash
-FRAPPE_IMAGE_NAME=ghcr.io/<owner>/frappe-devbox:v16 \
-FRAPPE_SKIP_BUILD=1 \
-./setup
-```
-
-If the package is private, make it public from GitHub: profile/org packages → `frappe-devbox` → Package settings → Change visibility → Public.
-
-By default this uses Frappe `version-16`. Override with:
-
-```bash
-FRAPPE_BRANCH=develop ./setup
-```
-
-## Notes
-
-- The bench is created inside the persistent container machine, not in a disposable container.
-- MariaDB, Redis, and cron are systemd services inside the machine.
-- The setup script is idempotent: it reuses an existing machine and bench/site when present.
+Run `Publish Devbox Image` from GitHub Actions after changes to the Dockerfile or scripts.

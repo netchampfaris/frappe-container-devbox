@@ -58,22 +58,19 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     install -m 0755 /root/.local/bin/uv /usr/local/bin/uv && \
     install -m 0755 /root/.local/bin/uvx /usr/local/bin/uvx && \
     uv python install 3.14 --default && \
-    uv tool install frappe-bench && \
     PY314="$(uv python find 3.14)" && \
     ln -sf "$PY314" /usr/local/bin/python3.14 && \
     chmod -R a+rX /opt/uv
 
+RUN git clone --depth 1 https://github.com/frappe/bench-cli /opt/bench-cli && \
+    chmod +x /opt/bench-cli/bench && \
+    ln -sf /opt/bench-cli/bench /usr/local/bin/bench && \
+    mkdir -p /opt/bench-cli/benches
+
 RUN systemctl set-default multi-user.target && \
     : > /etc/machine-id && \
     : > /var/lib/dbus/machine-id && \
-    test -x /sbin/init && \
-    systemctl mask \
-      dev-hugepages.mount \
-      sys-fs-fuse-connections.mount \
-      systemd-update-utmp.service \
-      systemd-tmpfiles-setup.service \
-      console-getty.service \
-      systemd-binfmt.service || true
+    test -x /sbin/init
 
 COPY scripts/frappe-devbox-init /usr/local/bin/frappe-devbox-init
 COPY scripts/create-frappe-bench /usr/local/bin/create-frappe-bench
@@ -84,7 +81,4 @@ RUN chmod +x \
       /usr/local/bin/create-frappe-bench \
       /usr/local/bin/start-frappe
 
-WORKDIR /workspace
-
-STOPSIGNAL SIGRTMIN+3
-CMD ["/sbin/init"]
+WORKDIR /opt/bench-cli/benches

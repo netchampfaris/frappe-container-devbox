@@ -3,6 +3,14 @@ set -euo pipefail
 
 sudo install -d -o mysql -g mysql -m 0755 /run/mysqld
 
+if [[ ! -d /var/lib/mysql/mysql ]]; then
+  sudo mariadb-install-db --user=mysql --datadir=/var/lib/mysql >/tmp/mariadb-install-db.log 2>&1 || {
+    echo "MariaDB data directory initialization failed. Log:" >&2
+    sudo cat /tmp/mariadb-install-db.log >&2 || true
+    exit 1
+  }
+fi
+
 db_ready() {
   sudo mariadb -e "SELECT 1" >/dev/null 2>&1 || \
     mariadb -uroot -proot -e "SELECT 1" >/dev/null 2>&1

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/.frappe-devbox.env"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  echo "Run ./setup first." >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+
+container machine run \
+  -n "$FRAPPE_MACHINE_NAME" \
+  --interactive \
+  --tty \
+  --env "FRAPPE_BENCH_NAME=$FRAPPE_BENCH_NAME" \
+  --env "FRAPPE_BENCH_DIR=$FRAPPE_BENCH_DIR" \
+  -- \
+  bash -lc '
+    set -euo pipefail
+
+    sudo mkdir -p /opt/bench-cli/benches
+    sudo ln -sfn "$FRAPPE_BENCH_DIR" "/opt/bench-cli/benches/$FRAPPE_BENCH_NAME"
+    frappe-devbox-init
+
+    cat <<MSG
+
+Frappe devbox shell
+
+Host-mounted bench directory:
+  $FRAPPE_BENCH_DIR
+
+First run:
+  bench new $FRAPPE_BENCH_NAME
+  bench init
+  bench new-site site1.localhost
+  bench start
+
+App:      http://127.0.0.1:8000
+Admin UI: http://127.0.0.1:8002
+
+MSG
+
+    cd "$FRAPPE_BENCH_DIR"
+    exec bash -l
+  '
